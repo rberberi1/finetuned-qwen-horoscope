@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunprint — horoscope readings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gloock&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<style>
+  @property --turn { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+
+  :root {
+    --prussian: #123C6E;
+    --deep: #0B2A52;
+    --print: #F2F5F2;
+    --cyan: #A9C4E0;
+    --line: #6F93BF;
+    --field: #1B4A80;
+    --display: "Gloock", Georgia, serif;
+    --body: "Newsreader", Georgia, serif;
+    --glyph: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    font: 400 1.125rem/1.6 var(--body);
+    color: var(--print);
+    background: radial-gradient(120% 90% at 30% 20%, var(--prussian) 40%, var(--deep));
+    display: grid;
+    grid-template-columns: minmax(320px, 44vw) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "head head" "wheel talk";
+  }
+
+  /* Paper grain, so the blue reads as a print rather than a screen fill */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    opacity: .18;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  :focus-visible { outline: 2px solid var(--print); outline-offset: 3px; }
+
+  header {
+    grid-area: head;
+    display: flex; align-items: baseline; gap: 1.25rem; flex-wrap: wrap;
+    padding: 1.5rem clamp(1.25rem, 4vw, 3rem) 0;
+  }
+  header h1 { font: 400 1.75rem/1 var(--display); margin: 0; }
+  header p { margin: 0; color: var(--cyan); font-size: 1rem; }
+
+  /* ---------- Wheel ---------- */
+  .wheel-side {
+    grid-area: wheel;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 2rem clamp(1rem, 3vw, 2.5rem);
+  }
+
+  .wheel {
+    --size: min(36vw, 74vh, 520px);
+    --r: calc(var(--size) * .39);
+    position: relative;
+    width: var(--size); aspect-ratio: 1;
+  }
+
+  .wheel svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .ring circle, .ring line { stroke: var(--line); stroke-width: .6; fill: none; }
+  .window { fill: rgba(242, 245, 242, .1); stroke: var(--print); stroke-width: .8; }
+
+  .dial {
+    position: absolute; inset: 0;
+    transform: rotate(var(--turn));
+    transition: --turn 900ms cubic-bezier(.3, .7, .2, 1);
+    margin: 0; padding: 0; border: 0;
+  }
+
+  .sign {
+    --a: calc(var(--i) * 30deg);
+    position: absolute; left: 50%; top: 50%;
+    width: 3rem; height: 3rem; margin: -1.5rem 0 0 -1.5rem;
+    transform: rotate(var(--a)) translateY(calc(var(--r) * -1)) rotate(calc(-1 * var(--a) - var(--turn)));
+    display: grid; place-items: center;
+    background: none; border: 0; border-radius: 50%;
+    color: var(--cyan);
+    font: 1.6rem/1 var(--glyph);
+    cursor: pointer;
+    transition: color .3s, font-size .3s;
+  }
+  .sign:hover { color: var(--print); }
+  .sign[aria-checked="true"] { color: var(--print); font-size: 2.1rem; }
+
+  .chosen {
+    position: absolute; inset: 22%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+  }
+  .chosen h2 { font: 400 calc(var(--size) * .085)/1 var(--display); margin: 0; }
+  .chosen p { margin: .5rem 0 0; color: var(--cyan); font-size: calc(var(--size) * .032); line-height: 1.3; }
+
+  /* ---------- Conversation ---------- */
+  main {
+    grid-area: talk;
+    display: flex; flex-direction: column;
+    min-height: 0;
+    padding: 1.5rem clamp(1.25rem, 4vw, 3rem) 1.5rem 0;
+  }
+
+  .log {
+    flex: 1; overflow-y: auto;
+    max-width: 62ch;
+    padding-right: 1rem;
+    scrollbar-color: var(--line) transparent;
+  }
+
+  .empty { color: var(--cyan); font-style: italic; max-width: 40ch; margin-top: 30vh; }
+
+  .q {
+    margin: 2.25rem 0 .5rem;
+    padding-left: .9rem;
+    border-left: 1px solid var(--line);
+    color: var(--cyan);
+  }
+
+  .a { margin: 0; font-size: 1.25rem; line-height: 1.65; animation: develop 1.4s ease-out; }
+  .a.error { color: var(--cyan); font-size: 1rem; }
+  .a.waiting { color: var(--cyan); font-style: italic; font-size: 1rem; animation: none; }
+
+  /* Like a cyanotype developing: the text comes up out of the blue */
+  @keyframes develop { from { color: var(--line); filter: blur(2px); } }
+
+  form { max-width: 62ch; margin-top: 1.25rem; }
+
+  .topics { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 .9rem; padding: 0; border: 0; }
+  .topics legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .topics label {
+    position: relative;
+    padding: .3rem .95rem;
+    border: 1px solid var(--line);
+    border-radius: 2rem;
+    font-size: 1rem;
+    color: var(--cyan);
+    cursor: pointer;
+  }
+  .topics input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+  .topics label:has(input:checked) { background: var(--print); border-color: var(--print); color: var(--prussian); }
+  .topics label:has(input:focus-visible) { outline: 2px solid var(--print); outline-offset: 3px; }
+
+  .send {
+    font: 500 1.0625rem var(--body);
+    color: var(--prussian);
+    background: var(--print);
+    border: 0; border-radius: .35rem;
+    padding: .75rem 1.6rem;
+    cursor: pointer;
+  }
+  .send:disabled { opacity: .5; cursor: wait; }
+  .hint { margin: .6rem 0 0; color: var(--cyan); font-size: .9375rem; }
+
+  /* ---------- Small screens ---------- */
+  @media (max-width: 760px) {
+    body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 1fr; grid-template-areas: "head" "wheel" "talk"; height: auto; min-height: 100%; }
+    .wheel-side { padding: 1rem 1rem 0; }
+    .wheel { --size: min(84vw, 340px); }
+    .sign { width: 2.75rem; height: 2.75rem; margin: -1.375rem 0 0 -1.375rem; font-size: 1.3rem; }
+    .sign[aria-checked="true"] { font-size: 1.7rem; }
+    .chosen p { font-size: .875rem; }
+    main { padding: 1rem 1.25rem 1.5rem; }
+    .log { overflow: visible; padding-right: 0; }
+    .empty { margin-top: 1rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dial, .sign { transition: none; }
+    .a { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sunprint</h1>
+  <p>Your horoscope for today, from a model trained on 22,000 daily horoscopes.</p>
+</header>
+
+<section class="wheel-side">
+  <div class="wheel">
+    <svg viewBox="-100 -100 200 200" aria-hidden="true">
+      <g class="ring" id="ring"></g>
+      <!-- The fixed window at the top: the chosen sign turns into it -->
+      <path class="window" d="M -24.8 -92.7 A 96 96 0 0 1 24.8 -92.7 L 15.8 -58.9 A 61 61 0 0 0 -15.8 -58.9 Z"/>
+    </svg>
+    <div class="chosen" aria-live="polite">
+      <h2 id="signName">Your sign</h2>
+      <p id="signDates">Pick the one your birthday falls under.</p>
+    </div>
+    <div class="dial" id="dial" role="radiogroup" aria-label="Your zodiac sign"></div>
+  </div>
+</section>
+
+<main>
+  <div class="log" id="log" aria-live="polite">
+    <p class="empty" id="empty">Pick your sign on the wheel and a topic, then get today’s reading.</p>
+  </div>
+
+  <form id="form">
+    <fieldset class="topics">
+      <legend>Reading about</legend>
+      <label><input type="radio" name="topic" value="general" checked>General</label>
+      <label><input type="radio" name="topic" value="love">Love</label>
+      <label><input type="radio" name="topic" value="career">Career</label>
+      <label><input type="radio" name="topic" value="wellness">Wellness</label>
+    </fieldset>
+    <button class="send" id="send" type="submit" aria-describedby="hint">Get today’s reading</button>
+    <p class="hint" id="hint">Readings cover today only, not future weeks or months.</p>
+  </form>
+</main>
+
+<script>
+const SIGNS = [
+  ["Aries", "♈", "March 21 – April 19"],
+  ["Taurus", "♉", "April 20 – May 20"],
+  ["Gemini", "♊", "May 21 – June 20"],
+  ["Cancer", "♋", "June 21 – July 22"],
+  ["Leo", "♌", "July 23 – August 22"],
+  ["Virgo", "♍", "August 23 – September 22"],
+  ["Libra", "♎", "September 23 – October 22"],
+  ["Scorpio", "♏", "October 23 – November 21"],
+  ["Sagittarius", "♐", "November 22 – December 21"],
+  ["Capricorn", "♑", "December 22 – January 19"],
+  ["Aquarius", "♒", "January 20 – February 18"],
+  ["Pisces", "♓", "February 19 – March 20"],
+];
+
+const $ = id => document.getElementById(id);
+const dial = $("dial"), log = $("log");
+let sign = null, turn = 0;
+
+// Ring: two circles and twelve sector lines
+const ring = $("ring");
+ring.innerHTML = `<circle r="96"/><circle r="61"/>` +
+  SIGNS.map((_, i) => `<line x1="0" y1="-61" x2="0" y2="-96" transform="rotate(${i * 30 + 15})"/>`).join("");
+
+SIGNS.forEach(([name, glyph], i) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "sign";
+  b.style.setProperty("--i", i);
+  b.textContent = glyph + "︎"; // text presentation, not emoji
+  b.setAttribute("role", "radio");
+  b.setAttribute("aria-checked", "false");
+  b.setAttribute("aria-label", name);
+  b.tabIndex = i === 0 ? 0 : -1;
+  b.onclick = () => choose(i);
+  b.onkeydown = e => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const next = (i + step + 12) % 12;
+    choose(next);
+    dial.children[next].focus();
+  };
+  dial.append(b);
+});
+
+function choose(i) {
+  // Turn the shortest way so the chosen sign lands in the top window
+  const target = -i * 30;
+  const delta = ((target - turn) % 360 + 540) % 360 - 180;
+  turn += delta;
+  dial.style.setProperty("--turn", turn + "deg");
+
+  [...dial.children].forEach((b, j) => {
+    b.setAttribute("aria-checked", j === i);
+    b.tabIndex = j === i ? 0 : -1;
+  });
+  sign = SIGNS[i][0];
+  $("signName").textContent = sign;
+  $("signDates").textContent = SIGNS[i][2];
+}
+
+function add(cls, text) {
+  const p = document.createElement("p");
+  p.className = cls;
+  p.textContent = text;
+  log.append(p);
+  p.scrollIntoView({ block: "end", behavior: "smooth" });
+  return p;
+}
+
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  if (!sign) {
+    $("signDates").textContent = "Choose your sign on the wheel first.";
+    dial.querySelector('[tabindex="0"]').focus();
+    return;
+  }
+  const topic = new FormData(e.target).get("topic");
+
+  $("empty")?.remove();
+  add("q", `${sign}, ${topic} horoscope for today`);
+
+  const a = add("a waiting", "Reading the sky. This takes about half a minute…");
+  $("send").disabled = true;
+
+  try {
+    const res = await fetch("/api/reading", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sign, topic }),
+    });
+    if (!res.ok) throw new Error();
+    const { reading } = await res.json();
+    a.className = "a";
+    a.textContent = reading;
+  } catch {
+    a.className = "a error";
+    a.textContent = "No reading came back. Try again in a moment.";
+  } finally {
+    $("send").disabled = false;
+    a.scrollIntoView({ block: "end", behavior: "smooth" });
+  }
+};
+</script>
+</body>
+</html>
