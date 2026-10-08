@@ -6,7 +6,7 @@
 <title>Sunprint — horoscope readings</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Gloock&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<link crossorigin="anonymous" href="https://fonts.googleapis.com/css2?family=Gloock&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
 <style>
   @property --turn { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
 
@@ -217,11 +217,13 @@
       <label><input type="radio" name="topic" value="wellness">Wellness</label>
     </fieldset>
     <button class="send" id="send" type="submit" aria-describedby="hint">Get today’s reading</button>
-    <p class="hint" id="hint">Readings cover today only, not future weeks or months.</p>
+    <p class="hint" id="hint">Readings cover today only. The model runs on your device, and your first visit downloads it (about 830 MB).</p>
   </form>
 </main>
 
-<script>
+<script type="module">
+import { pipeline, TextStreamer } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.0";
+
 const SIGNS = [
   ["Aries", "♈", "March 21 – April 19"],
   ["Taurus", "♉", "April 20 – May 20"],
@@ -282,6 +284,7 @@ function choose(i) {
   sign = SIGNS[i][0];
   $("signName").textContent = sign;
   $("signDates").textContent = SIGNS[i][2];
+  loadModel().catch(() => {});
 }
 
 function add(cls, text) {
@@ -291,6 +294,31 @@ function add(cls, text) {
   log.append(p);
   p.scrollIntoView({ block: "end", behavior: "smooth" });
   return p;
+}
+
+// ---------- The model runs in the browser ----------
+const MODEL = "rberberi/qwen3-finetuned-onnx";
+const DTYPE = "q8";
+const HINT = $("hint").textContent;
+let generator = null, ready = false;
+
+// Download once (the browser caches it), on WebGPU when available, otherwise on the CPU
+function loadModel() {
+  const files = {};
+  const progress_callback = e => {
+    if (e.status !== "progress" || !e.total) return;
+    files[e.file] = e;
+    const loaded = Object.values(files).reduce((sum, f) => sum + f.loaded, 0);
+    const total = Object.values(files).reduce((sum, f) => sum + f.total, 0);
+    $("hint").textContent = `Downloading the model to your browser: ${Math.floor(100 * loaded / total)}%`;
+  };
+  const device = navigator.gpu?.requestAdapter().then(gpu => gpu ? "webgpu" : "wasm", () => "wasm") ?? Promise.resolve("wasm");
+  generator ??= device
+    .then(device => pipeline("text-generation", MODEL, { dtype: DTYPE, device, progress_callback }))
+    .then(generate => { ready = true; return generate; })
+    .finally(() => { $("hint").textContent = HINT; });
+  generator.catch(() => { generator = null; });
+  return generator;
 }
 
 $("form").onsubmit = async e => {
@@ -304,23 +332,43 @@ $("form").onsubmit = async e => {
 
   $("empty")?.remove();
   add("q", `${sign}, ${topic} horoscope for today`);
-
-  const a = add("a waiting", "Reading the sky. This takes about half a minute…");
+  const a = add("a waiting", ready ? "Writing your reading…" : "Loading the model. The first time, this can take a few minutes…");
   $("send").disabled = true;
 
   try {
-    const res = await fetch("/api/reading", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sign, topic }),
+    const generate = await loadModel();
+    a.textContent = "Writing your reading…";
+
+    // Same chat format the model was trained on (see train.py)
+    const prompt = `<|im_start|>user
+My sign is ${sign}. Give me my ${topic} horoscope for today.<|im_end|>
+` +
+      `<|im_start|>assistant
+<think>
+
+</think>
+
+`;
+    let text = "";
+    const streamer = new TextStreamer(generate.tokenizer, {
+      skip_prompt: true,
+      skip_special_tokens: true,
+      callback_function: chunk => {
+        text += chunk;
+        a.className = "a";
+        a.textContent = text;
+      },
     });
-    if (!res.ok) throw new Error();
-    const { reading } = await res.json();
+    await generate(prompt, { max_new_tokens: 160, do_sample: true, temperature: 0.8, top_p: 0.9, repetition_penalty: 1.1, streamer });
+
+    // If the reading hit the length limit mid-sentence, cut back to the last full sentence
+    const end = Math.max(...[".", "!", "?"].map(c => text.lastIndexOf(c)));
     a.className = "a";
-    a.textContent = reading;
-  } catch {
+    a.textContent = (end > 0 ? text.slice(0, end + 1) : text).trim();
+  } catch (err) {
+    console.error(err);
     a.className = "a error";
-    a.textContent = "No reading came back. Try again in a moment.";
+    a.textContent = "The model couldn’t run in this browser. Try a recent Chrome, Edge or Firefox on a computer.";
   } finally {
     $("send").disabled = false;
     a.scrollIntoView({ block: "end", behavior: "smooth" });
