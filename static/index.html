@@ -217,7 +217,7 @@
       <label><input type="radio" name="topic" value="wellness">Wellness</label>
     </fieldset>
     <button class="send" id="send" type="submit" aria-describedby="hint">Get today’s reading</button>
-    <p class="hint" id="hint">Readings cover today only. The model runs on your device, and your first visit downloads it (about 830 MB).</p>
+    <p class="hint" id="hint">Readings cover today only. The model runs on your device, and your first visit downloads it (about 490 MB).</p>
   </form>
 </main>
 
@@ -298,11 +298,11 @@ function add(cls, text) {
 
 // ---------- The model runs in the browser ----------
 const MODEL = "rberberi/qwen3-finetuned-onnx";
-const DTYPE = "q8";
+const DTYPE = "q4f16";
 const HINT = $("hint").textContent;
 let generator = null, ready = false;
 
-// Download once (the browser caches it), on WebGPU when available, otherwise on the CPU
+// Download once (the browser caches it) and run on the GPU with WebGPU
 function loadModel() {
   const files = {};
   const progress_callback = e => {
@@ -312,9 +312,12 @@ function loadModel() {
     const total = Object.values(files).reduce((sum, f) => sum + f.total, 0);
     $("hint").textContent = `Downloading the model to your browser: ${Math.floor(100 * loaded / total)}%`;
   };
-  const device = navigator.gpu?.requestAdapter().then(gpu => gpu ? "webgpu" : "wasm", () => "wasm") ?? Promise.resolve("wasm");
-  generator ??= device
-    .then(device => pipeline("text-generation", MODEL, { dtype: DTYPE, device, progress_callback }))
+  const gpu = navigator.gpu?.requestAdapter().catch(() => null) ?? Promise.resolve(null);
+  generator ??= gpu
+    .then(adapter => {
+      if (!adapter) throw new Error("WebGPU is not available");
+      return pipeline("text-generation", MODEL, { dtype: DTYPE, device: "webgpu", progress_callback });
+    })
     .then(generate => { ready = true; return generate; })
     .finally(() => { $("hint").textContent = HINT; });
   generator.catch(() => { generator = null; });
@@ -332,7 +335,7 @@ $("form").onsubmit = async e => {
 
   $("empty")?.remove();
   add("q", `${sign}, ${topic} horoscope for today`);
-  const a = add("a waiting", ready ? "Writing your reading…" : "Loading the model. The first time, this can take a few minutes…");
+  const a = add("a waiting", ready ? "Writing your reading…" : "Loading the model. The first time, this downloads about 490 MB…");
   $("send").disabled = true;
 
   try {
@@ -368,7 +371,7 @@ My sign is ${sign}. Give me my ${topic} horoscope for today.<|im_end|>
   } catch (err) {
     console.error(err);
     a.className = "a error";
-    a.textContent = "The model couldn’t run in this browser. Try a recent Chrome, Edge or Firefox on a computer.";
+    a.textContent = "This browser can’t run the model, because it needs WebGPU. Try a recent Chrome, Edge, Safari or Firefox on a computer.";
   } finally {
     $("send").disabled = false;
     a.scrollIntoView({ block: "end", behavior: "smooth" });

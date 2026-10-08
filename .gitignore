@@ -1,6 +1,7 @@
 __pycache__/
 qwen3-finetuned/
 .venv-convert/
-onnx-export/
+onnx-build/
 onnx-web/
 static/_test.html
+bench-models/
