@@ -6,6 +6,7 @@
 #   .venv-convert\Scripts\pip install onnxruntime-genai transformers onnx
 #   .venv-convert\Scripts\python convert.py
 import os
+import re
 import runpy
 import shutil
 import sys
@@ -16,6 +17,7 @@ from huggingface_hub import HfApi, hf_hub_download
 
 model_name = "rberberi/qwen3-finetuned"
 web_repo = "rberberi/qwen3-finetuned-onnx"
+space = "rberberi/sunprint"
 
 # 1. Build a 4-bit model for WebGPU (about 490 MB); k_quant_mixed keeps the most sensitive layers at 8 bits
 sys.path.insert(0, os.path.dirname(onnxruntime_genai.models.__file__))
@@ -38,8 +40,16 @@ onnx.save(model, "onnx-web/onnx/model_q4f16.onnx")
 for name in ["config.json", "generation_config.json", "tokenizer.json", "tokenizer_config.json"]:
     shutil.copy(hf_hub_download(model_name, name), f"onnx-web/{name}")
 
-# 3. Upload
+# 3. Upload the model, then point the website at this exact version and redeploy it,
+#    so browsers that cached an older model download the new one
 api = HfApi()
 api.create_repo(web_repo, exist_ok=True)
-api.upload_folder(folder_path="onnx-web", repo_id=web_repo, commit_message="Upload WebGPU model", delete_patterns=["onnx/*"])
+commit = api.upload_folder(folder_path="onnx-web", repo_id=web_repo, commit_message="Upload WebGPU model", delete_patterns=["onnx/*"])
 print(f"Uploaded to https://huggingface.co/{web_repo}")
+
+page = open("static/index.html", encoding="utf-8").read()
+page = re.sub(r'const REVISION = "[^"]*";', f'const REVISION = "{commit.oid}";', page)
+open("static/index.html", "w", encoding="utf-8").write(page)
+api.upload_file(path_or_fileobj="static/index.html", path_in_repo="static/index.html", repo_id=space,
+                repo_type="space", commit_message="Use the new model")
+print(f"Website updated: https://huggingface.co/spaces/{space}. Commit static/index.html to git too.")

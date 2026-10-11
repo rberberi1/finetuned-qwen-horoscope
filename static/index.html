@@ -298,6 +298,7 @@ function add(cls, text) {
 // ---------- The model runs in the browser ----------
 const MODEL = "rberberi/qwen3-finetuned-onnx";
 const DTYPE = "q4f16";
+const REVISION = "0ddd6b10272d94adcdd1f3811f25af2bedf81f83";  // set by convert.py, so browsers download each new model instead of a cached one
 const HINT = $("hint").textContent, send = $("send");
 let generate = null;
 
@@ -321,7 +322,7 @@ async function loadModel() {
       $("hint").textContent = "This browser can’t run the model, because it needs WebGPU. Try a recent Chrome, Edge, Safari or Firefox on a computer.";
       return;
     }
-    generate = await pipeline("text-generation", MODEL, { dtype: DTYPE, device: "webgpu", progress_callback });
+    generate = await pipeline("text-generation", MODEL, { dtype: DTYPE, revision: REVISION, device: "webgpu", progress_callback });
     send.textContent = "Get today’s reading";
     $("hint").textContent = HINT;
   } catch (err) {
